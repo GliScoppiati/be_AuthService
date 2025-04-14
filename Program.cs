@@ -15,7 +15,6 @@ var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 Console.WriteLine("CONNECTION STRING LETTA: " + builder.Configuration.GetConnectionString("DefaultConnection"));
 
-
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -78,6 +77,13 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// 🔧 Esegui automaticamente le migration al boot
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    db.Database.Migrate(); // ← crea o aggiorna le tabelle nel DB
+}
+
 // Pipeline HTTP
 if (app.Environment.IsDevelopment())
 {
@@ -87,10 +93,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// ATTENZIONE: Authentication PRIMA di Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
 Console.WriteLine("AuthService starting on: " + builder.Configuration["ASPNETCORE_URLS"]);
 app.Run();
