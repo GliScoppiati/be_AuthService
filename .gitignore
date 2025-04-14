@@ -1,0 +1,25 @@
+# Build directories
+bin/
+obj/
+publish/
+
+# VS Code
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# ASP.NET secrets (gestiti con dotnet user-secrets)
+secrets.json
+
+# Optional: escludi impostazioni locali non condivisibili
+appsettings.Development.json
+
+# Docker artefacts (se temporanei)
+*.dockerfile.tmp
