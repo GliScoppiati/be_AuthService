@@ -6,11 +6,11 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configura DbContext con PostgreSQL
+// ▶️ Configura DbContext con PostgreSQL
 builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Configura impostazioni JWT
+// 🔐 Configura impostazioni JWT
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 Console.WriteLine("CONNECTION STRING LETTA: " + builder.Configuration.GetConnectionString("DefaultConnection"));
@@ -36,10 +36,16 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// Aggiunge i controller
+// 🌍 HttpClient per chiamare user-profile-service
+builder.Services.AddHttpClient("UserProfileService", client =>
+{
+    client.BaseAddress = new Uri("http://user-profile-service:80/");
+});
+
+// ▶️ Aggiunge i controller
 builder.Services.AddControllers();
 
-// Swagger
+// 📚 Swagger + autorizzazione via bearer token
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -77,14 +83,35 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// 🔧 Esegui automaticamente le migration al boot
+// 🔄 Migrazioni automatiche al boot con retry
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-    db.Database.Migrate(); // ← crea o aggiorna le tabelle nel DB
+    var maxRetries = 10;
+    var retries = 0;
+
+    while (true)
+    {
+        try
+        {
+            db.Database.Migrate();
+            Console.WriteLine("✅ Migration completata.");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries++;
+            Console.WriteLine($"⏳ Tentativo {retries}/10: il DB non è ancora pronto... {ex.Message}");
+
+            if (retries >= maxRetries)
+                throw;
+
+            Thread.Sleep(2000);
+        }
+    }
 }
 
-// Pipeline HTTP
+// 🧱 Middleware pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -92,11 +119,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 Console.WriteLine("AuthService starting on: " + builder.Configuration["ASPNETCORE_URLS"]);
 app.Run();
+

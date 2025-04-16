@@ -8,6 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authorization;
+using System.Net.Http.Json;
 
 namespace AuthService.Controllers
 {
@@ -17,11 +18,13 @@ namespace AuthService.Controllers
     {
         private readonly AuthDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public AuthController(AuthDbContext context, IConfiguration configuration)
+        public AuthController(AuthDbContext context, IConfiguration configuration, IHttpClientFactory httpClientFactory)
         {
             _context = context;
             _configuration = configuration;
+            _httpClientFactory = httpClientFactory;
         }
 
         [HttpPost("register")]
@@ -32,18 +35,45 @@ namespace AuthService.Controllers
 
             var exists = await _context.Users.AnyAsync(u => u.Email == request.Email);
             if (exists)
-                return BadRequest("Email già registrata.");
+                return BadRequest(new { error = "Email già registrata." });
 
             var user = new User
             {
+                Username = request.Username,
                 Email = request.Email,
-                PasswordHash = HashPassword(request.Password)
+                PasswordHash = HashPassword(request.Password),
+                LastLogin = DateTime.UtcNow
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return Ok("Registrazione completata.");
+            // 🔗 Invio richiesta al microservizio UserProfileService
+            var client = _httpClientFactory.CreateClient("UserProfileService");
+
+            var profilePayload = new
+            {
+                userId = user.Id,
+                firstName = "",
+                lastName = "",
+                birthDate = DateTime.UtcNow,
+                alcoholAllowed = false,
+                consentGdpr = false,
+                consentProfiling = false
+            };
+
+            var response = await client.PostAsJsonAsync("api/userprofile", profilePayload);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode((int)response.StatusCode, "Registrazione utente avvenuta, ma creazione profilo fallita.");
+            }
+
+            return Ok(new
+		{
+    		message = "Registrazione completata.",
+    		userId = user.Id
+		});
         }
 
         [HttpPost("login")]
@@ -60,8 +90,10 @@ namespace AuthService.Controllers
             if (user.PasswordHash != hash)
                 return Unauthorized("Credenziali non valide.");
 
-            var token = GenerateJwtToken(user.Email);
+            user.LastLogin = DateTime.UtcNow;
+            _context.Users.Update(user);
 
+            var token = GenerateJwtToken(user);
             var refreshToken = new RefreshToken
             {
                 Token = Guid.NewGuid().ToString(),
@@ -74,10 +106,12 @@ namespace AuthService.Controllers
 
             return Ok(new
             {
+            	userId = user.Id,
                 token,
                 refreshToken = refreshToken.Token
             });
         }
+
         [HttpPost("refresh")]
         public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
         {
@@ -91,11 +125,12 @@ namespace AuthService.Controllers
             if (stored == null || stored.User == null)
                 return Unauthorized("Refresh token non valido o scaduto.");
 
-            // Invalida il vecchio token
+            stored.User.LastLogin = DateTime.UtcNow;
+            _context.Users.Update(stored.User);
+
             _context.RefreshTokens.Remove(stored);
 
-            // Crea nuovi token
-            var newJwt = GenerateJwtToken(stored.User.Email);
+            var newJwt = GenerateJwtToken(stored.User);
             var newRefreshToken = new RefreshToken
             {
                 Token = Guid.NewGuid().ToString(),
@@ -112,6 +147,7 @@ namespace AuthService.Controllers
                 refreshToken = newRefreshToken.Token
             });
         }
+
         [HttpPost("logout")]
         public async Task<IActionResult> Logout([FromBody] LogoutRequest request)
         {
@@ -129,7 +165,12 @@ namespace AuthService.Controllers
 
             return Ok("Logout completato. Refresh token invalidato.");
         }
-
+	[HttpGet("exists/{id}")]
+	public async Task<IActionResult> CheckUserExists(Guid id)
+	{
+    		var exists = await _context.Users.AnyAsync(u => u.Id == id);
+    		return Ok(new { exists });
+	}
         [Authorize]
         [HttpGet("me")]
         public IActionResult GetProfile()
@@ -137,33 +178,40 @@ namespace AuthService.Controllers
             var email = User.Identity?.Name;
             return Ok(new { email });
         }
-        private string GenerateJwtToken(string email)
-        {
-            var jwtSettings = _configuration.GetSection("Jwt");
-            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
-            var tokenHandler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-            var tokenDescriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.Name, email)
-                }),
-                Expires = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"]!)),
-                Issuer = jwtSettings["Issuer"],
-                Audience = jwtSettings["Audience"],
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-            };
+        private string GenerateJwtToken(User user)
+	{
+    		var jwtSettings = _configuration.GetSection("Jwt");
+    		var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            return tokenHandler.WriteToken(token);
-        }
-        private string HashPassword(string password)
+    		var tokenHandler = new JwtSecurityTokenHandler();
+    		var tokenDescriptor = new SecurityTokenDescriptor
+    	{
+    	Subject = new ClaimsIdentity(new[]
         {
-            using var sha256 = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(password);
-            var hash = sha256.ComputeHash(bytes);
-            return Convert.ToBase64String(hash);
-        }
-    }
+            	new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), // 🔑 UserId
+            	new Claim(ClaimTypes.Email, user.Email),
+            	new Claim(ClaimTypes.Name, user.Username) // opzionale ma utile
+        }),
+        Expires = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"]!)),
+        Issuer = jwtSettings["Issuer"],
+        Audience = jwtSettings["Audience"],
+        SigningCredentials = new SigningCredentials(
+        new SymmetricSecurityKey(key),
+        SecurityAlgorithms.HmacSha256Signature)
+    	};
+
+    	var token = tokenHandler.CreateToken(tokenDescriptor);
+    	return tokenHandler.WriteToken(token);
+	}
+
+	private string HashPassword(string password)
+	{
+	    using var sha256 = SHA256.Create();
+	    var bytes = Encoding.UTF8.GetBytes(password);
+	    var hash = sha256.ComputeHash(bytes);
+	    return Convert.ToBase64String(hash);
+	}
+}
+
 }

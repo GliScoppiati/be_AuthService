@@ -15,7 +15,7 @@ namespace AuthService.Models
         public DateTime ExpiryDate { get; set; }
 
         [Required]
-        public int UserId { get; set; }
+        public Guid UserId { get; set; }
 
         [ForeignKey("UserId")]
         public User? User { get; set; }
