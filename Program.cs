@@ -13,7 +13,6 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 // 🔐 Configura impostazioni JWT
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
-Console.WriteLine("CONNECTION STRING LETTA: " + builder.Configuration.GetConnectionString("DefaultConnection"));
 
 builder.Services.AddAuthentication(options =>
 {

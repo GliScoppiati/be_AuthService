@@ -1,6 +1,7 @@
 # Stage 1: Build dell'applicazione
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+EXPOSE 80
 
 # Copia e ripristina i pacchetti
 COPY *.csproj ./
@@ -15,4 +16,3 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "AuthService.dll"]
-

@@ -19,5 +19,7 @@ namespace AuthService.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? LastLogin { get; set; }
+
+        public bool IsAdmin {get; set; } = false;
     }
 }

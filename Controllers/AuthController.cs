@@ -165,12 +165,14 @@ namespace AuthService.Controllers
 
             return Ok("Logout completato. Refresh token invalidato.");
         }
-	[HttpGet("exists/{id}")]
-	public async Task<IActionResult> CheckUserExists(Guid id)
-	{
-    		var exists = await _context.Users.AnyAsync(u => u.Id == id);
-    		return Ok(new { exists });
-	}
+	
+        [HttpGet("exists/{id}")]
+        public async Task<IActionResult> CheckUserExists(Guid id)
+        {
+                var exists = await _context.Users.AnyAsync(u => u.Id == id);
+                return Ok(new { exists });
+        }
+
         [Authorize]
         [HttpGet("me")]
         public IActionResult GetProfile()
@@ -180,38 +182,45 @@ namespace AuthService.Controllers
         }
 
         private string GenerateJwtToken(User user)
-	{
-    		var jwtSettings = _configuration.GetSection("Jwt");
-    		var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
-
-    		var tokenHandler = new JwtSecurityTokenHandler();
-    		var tokenDescriptor = new SecurityTokenDescriptor
-    	{
-    	Subject = new ClaimsIdentity(new[]
         {
-            	new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), // 🔑 UserId
-            	new Claim(ClaimTypes.Email, user.Email),
-            	new Claim(ClaimTypes.Name, user.Username) // opzionale ma utile
-        }),
-        Expires = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"]!)),
-        Issuer = jwtSettings["Issuer"],
-        Audience = jwtSettings["Audience"],
-        SigningCredentials = new SigningCredentials(
-        new SymmetricSecurityKey(key),
-        SecurityAlgorithms.HmacSha256Signature)
-    	};
+            var jwtSettings = _configuration.GetSection("Jwt");
+            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
-    	var token = tokenHandler.CreateToken(tokenDescriptor);
-    	return tokenHandler.WriteToken(token);
-	}
+            // 🔐 1. Costruisci la lista di claim base
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.Username)
+            };
 
-	private string HashPassword(string password)
-	{
-	    using var sha256 = SHA256.Create();
-	    var bytes = Encoding.UTF8.GetBytes(password);
-	    var hash = sha256.ComputeHash(bytes);
-	    return Convert.ToBase64String(hash);
-	}
+            // 🔐 2. Se l’utente è admin, aggiungi il claim di ruolo
+            if (user.IsAdmin)
+                claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["ExpireMinutes"]!)),
+                Issuer = jwtSettings["Issuer"],
+                Audience = jwtSettings["Audience"],
+                SigningCredentials = new SigningCredentials(
+                    new SymmetricSecurityKey(key),
+                    SecurityAlgorithms.HmacSha256Signature)
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
+        }
+
+        private string HashPassword(string password)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = Encoding.UTF8.GetBytes(password);
+            var hash = sha256.ComputeHash(bytes);
+            return Convert.ToBase64String(hash);
+        }
 }
 
 }
