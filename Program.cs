@@ -2,6 +2,7 @@ using AuthService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,6 +42,17 @@ builder.Services.AddHttpClient("UserProfileService", client =>
     client.BaseAddress = new Uri("http://user-profile-service:80/");
 });
 
+// ➡️ CORS Policy (consigliato per microservizi)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 // ▶️ Aggiunge i controller
 builder.Services.AddControllers();
 
@@ -50,30 +62,30 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Auth API", Version = "v1" });
 
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = @"JWT Authorization header usando lo schema Bearer.  
                         Inserisci 'Bearer' seguito da uno spazio e il tuo token.  
                         Esempio: Bearer 12345abcdef",
         Name = "Authorization",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
         Scheme = "Bearer"
     });
 
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            new OpenApiSecurityScheme
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                Reference = new OpenApiReference
                 {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
                 },
                 Scheme = "oauth2",
                 Name = "Bearer",
-                In = Microsoft.OpenApi.Models.ParameterLocation.Header
+                In = ParameterLocation.Header
             },
             new List<string>()
         }
@@ -82,7 +94,7 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// 🔄 Migrazioni automatiche al boot con retry
+// 🔄 Esegue migrazione automatica
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -110,18 +122,18 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// 🧱 Middleware pipeline
+// ➡️ Pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseCors("AllowAll"); // 💡 ATTENZIONE: CORS PRIMA di Authentication
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-Console.WriteLine("AuthService starting on: " + builder.Configuration["ASPNETCORE_URLS"]);
+Console.WriteLine("✅ AuthService avviato su: " + builder.Configuration["ASPNETCORE_URLS"]);
 app.Run();
-
