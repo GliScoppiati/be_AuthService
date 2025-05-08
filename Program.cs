@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using AuthService.Services;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,12 @@ builder.Services.AddAuthentication(options =>
 
 // 🌍 HttpClient per chiamare user-profile-service
 builder.Services.AddHttpClient("UserProfileService", client =>
+{
+    client.BaseAddress = new Uri("http://user-profile-service:80/");
+});
+
+// 🌍 HttpClient specifico per UserProfileClient (inietta direttamente UserProfileClient nei controller)
+builder.Services.AddHttpClient<UserProfileClient>(client =>
 {
     client.BaseAddress = new Uri("http://user-profile-service:80/");
 });

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using AuthService.Models;
 using AuthService.Data;
+using AuthService.Services;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
@@ -19,12 +20,14 @@ namespace AuthService.Controllers
         private readonly AuthDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly UserProfileClient _userProfileClient;
 
-        public AuthController(AuthDbContext context, IConfiguration configuration, IHttpClientFactory httpClientFactory)
+        public AuthController(AuthDbContext context, IConfiguration configuration, IHttpClientFactory httpClientFactory, UserProfileClient userProfileClient)
         {
             _context = context;
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
+            _userProfileClient = userProfileClient;   // ✅ OK ORA!
         }
 
         [HttpPost("register")]
@@ -186,12 +189,16 @@ namespace AuthService.Controllers
             var jwtSettings = _configuration.GetSection("Jwt");
             var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
+            var profile = _userProfileClient.GetUserProfileAsync(user.Id).GetAwaiter().GetResult();
+
             // 🔐 1. Costruisci la lista di claim base
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Name, user.Username)
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim("alcoholAllowed", profile.AlcoholAllowed.ToString()),
+                new Claim("profilingAllowed", profile.ConsentProfiling.ToString())
             };
 
             // 🔐 2. Se l’utente è admin, aggiungi il claim di ruolo
