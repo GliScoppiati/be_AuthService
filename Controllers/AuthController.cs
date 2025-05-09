@@ -166,7 +166,7 @@ namespace AuthService.Controllers
             _context.RefreshTokens.Remove(stored);
             await _context.SaveChangesAsync();
 
-            return Ok("Logout completato. Refresh token invalidato.");
+            return Ok(new { message = "Logout completato. Refresh token invalidato." });
         }
 	
         [HttpGet("exists/{id}")]
