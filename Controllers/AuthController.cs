@@ -36,7 +36,7 @@ namespace AuthService.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var exists = await _context.Users.AnyAsync(u => u.Email == request.Email);
+            var exists = await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted);
             if (exists)
                 return BadRequest(new { error = "Email già registrata." });
 
@@ -88,6 +88,9 @@ namespace AuthService.Controllers
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
             if (user == null)
                 return Unauthorized("Credenziali non valide.");
+            
+            if (user.IsDeleted)
+                return Unauthorized("Account disattivato.");
 
             var hash = HashPassword(request.Password);
             if (user.PasswordHash != hash)
@@ -127,6 +130,9 @@ namespace AuthService.Controllers
 
             if (stored == null || stored.User == null)
                 return Unauthorized("Refresh token non valido o scaduto.");
+            
+            if (stored.User.IsDeleted)
+                return Unauthorized("Account disattivato.");
 
             stored.User.LastLogin = DateTime.UtcNow;
             _context.Users.Update(stored.User);
@@ -227,6 +233,27 @@ namespace AuthService.Controllers
             var bytes = Encoding.UTF8.GetBytes(password);
             var hash = sha256.ComputeHash(bytes);
             return Convert.ToBase64String(hash);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteUser(Guid id)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user == null)
+                return NotFound(new { error = "Utente non trovato." });
+
+            user.IsDeleted = true;
+
+            if (!user.Email.StartsWith("[DELETED]"))
+                user.Email = $"[DELETED] {user.Email}";
+
+            var tokens = _context.RefreshTokens.Where(r => r.UserId == id);
+            _context.RefreshTokens.RemoveRange(tokens);
+
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Utente disattivato." });
         }
 }
 
