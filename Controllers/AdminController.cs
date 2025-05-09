@@ -93,4 +93,20 @@ public class AdminController : ControllerBase
             registeredLast7Days = recent
         });
     }
+
+    [HttpPost("force-logout/{userId}")]
+    public async Task<IActionResult> ForceLogout(Guid userId)
+    {
+        var tokens = await _context.RefreshTokens
+            .Where(t => t.UserId == userId)
+            .ToListAsync();
+
+        if (!tokens.Any())
+            return NotFound(new { message = "Nessun token trovato per questo utente." });
+
+        _context.RefreshTokens.RemoveRange(tokens);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Utente disconnesso da tutte le sessioni." });
+    }
 }

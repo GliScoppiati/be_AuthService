@@ -186,8 +186,14 @@ namespace AuthService.Controllers
         [HttpGet("me")]
         public IActionResult GetProfile()
         {
-            var email = User.Identity?.Name;
-            return Ok(new { email });
+            var username = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
+            var email = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+
+            return Ok(new
+            {
+                username,
+                email
+            });
         }
 
         private string GenerateJwtToken(User user)
