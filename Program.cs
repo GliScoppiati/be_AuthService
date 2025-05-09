@@ -102,10 +102,20 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+static string HashPassword(string password)
+{
+    using var sha256 = System.Security.Cryptography.SHA256.Create();
+    var bytes = System.Text.Encoding.UTF8.GetBytes(password);
+    var hash = sha256.ComputeHash(bytes);
+    return Convert.ToBase64String(hash);
+}
+
 // 🔄 Esegue migrazione automatica
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+
     var maxRetries = 10;
     var retries = 0;
 
@@ -115,12 +125,49 @@ using (var scope = app.Services.CreateScope())
         {
             db.Database.Migrate();
             Console.WriteLine("✅ Migration completata.");
+
+            // 👉 CREAZIONE UTENTE ADMIN SE NON ESISTE
+            var adminEmail = config["AdminUser:Email"];
+            var adminUsername = config["AdminUser:Username"];
+            var adminPassword = config["AdminUser:Password"];
+
+            if (!string.IsNullOrEmpty(adminEmail) &&
+                !string.IsNullOrEmpty(adminUsername) &&
+                !string.IsNullOrEmpty(adminPassword))
+            {
+                var exists = db.Users.Any(u => u.Email == adminEmail);
+                if (!exists)
+                {
+                    var passwordHash = HashPassword(adminPassword);
+
+                    db.Users.Add(new AuthService.Models.User
+                    {
+                        Email = adminEmail,
+                        Username = adminUsername,
+                        PasswordHash = passwordHash,
+                        IsAdmin = true,
+                        LastLogin = DateTime.UtcNow
+                    });
+
+                    db.SaveChanges();
+                    Console.WriteLine("👑 Utente admin creato.");
+                }
+                else
+                {
+                    Console.WriteLine("👤 Utente admin già esistente.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("⚠️ Parametri AdminUser incompleti. Utente admin non creato.");
+            }
+
             break;
         }
         catch (Exception ex)
         {
             retries++;
-            Console.WriteLine($"⏳ Tentativo {retries}/10: il DB non è ancora pronto... {ex.Message}");
+            Console.WriteLine($"⏳ Tentativo {retries}/{maxRetries}: il DB non è ancora pronto... {ex.Message}");
 
             if (retries >= maxRetries)
                 throw;
