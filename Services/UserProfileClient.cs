@@ -14,13 +14,23 @@ public class UserProfileClient
 
     public async Task<UserProfileResponse> GetUserProfileAsync(Guid userId)
     {
-        var profile = await _http.GetFromJsonAsync<UserProfileResponse>($"api/userprofile/{userId}");
-
-        return profile ?? new UserProfileResponse
+        try
         {
-            AlcoholAllowed = false,
-            ConsentProfiling = false
-        };
+            var profile = await _http.GetFromJsonAsync<UserProfileResponse>($"api/userprofile/{userId}");
+            return profile ?? new UserProfileResponse
+            {
+                AlcoholAllowed = false,
+                ConsentProfiling = false
+            };
+        }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return new UserProfileResponse
+            {
+                AlcoholAllowed = false,
+                ConsentProfiling = false
+            };
+        }
     }
 
     public class UserProfileResponse
