@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AuthService.Data;
+using AuthService.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace AuthService.Controllers;
 
@@ -109,4 +111,36 @@ public class AdminController : ControllerBase
 
         return Ok(new { message = "Utente disconnesso da tutte le sessioni." });
     }
+
+    [HttpPost("change-role")]
+        public async Task<IActionResult> ChangeUserRole([FromBody] ChangeRoleRequest request)
+        {
+            var currentUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            if (currentUserId == null || !Guid.TryParse(currentUserId, out var callerId))
+                return Unauthorized("Token non valido.");
+
+            if (callerId == request.TargetUserId)
+                return BadRequest(new { error = "Non puoi cambiare il tuo stesso ruolo." });
+
+            var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == request.TargetUserId);
+            if (targetUser == null || targetUser.IsDeleted)
+                return NotFound(new { error = "Utente non trovato." });
+
+            if (!request.MakeAdmin && targetUser.IsAdmin)
+            {
+                var adminCount = await _context.Users.CountAsync(u => u.IsAdmin && !u.IsDeleted);
+                if (adminCount <= 1)
+                    return BadRequest(new { error = "Non puoi rimuovere l’ultimo admin esistente." });
+            }
+
+            targetUser.IsAdmin = request.MakeAdmin;
+            _context.Users.Update(targetUser);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = $"Ruolo aggiornato: {(request.MakeAdmin ? "Admin" : "User")}.",
+                userId = targetUser.Id
+            });
+        }    
 }

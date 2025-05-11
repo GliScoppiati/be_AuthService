@@ -261,6 +261,37 @@ namespace AuthService.Controllers
 
             return Ok(new { message = "Utente disattivato." });
         }
-}
 
+        [Authorize]
+        [HttpPost("change-password")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+                return Unauthorized("Token non valido.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null || user.IsDeleted)
+                return Unauthorized("Utente non valido o disattivato.");
+
+            var currentHash = HashPassword(request.CurrentPassword);
+            if (user.PasswordHash != currentHash)
+                return BadRequest(new { error = "La password attuale non è corretta." });
+
+ 
+            user.PasswordHash = HashPassword(request.NewPassword);
+            _context.Users.Update(user);
+
+          
+            var tokens = _context.RefreshTokens.Where(r => r.UserId == userId);
+            _context.RefreshTokens.RemoveRange(tokens);
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password aggiornata. Tutte le sessioni sono state disconnesse." });
+        }
+    }
 }
