@@ -36,9 +36,19 @@ namespace AuthService.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var exists = await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted);
-            if (exists)
+            // ✅ Controllo email già registrata (esistente)
+            var emailExists = await _context.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted);
+            if (emailExists)
                 return BadRequest(new { error = "Email già registrata." });
+
+            // ✅ Controllo username già esistente (solo su utenti attivi)
+            var normalizedUsername = request.Username.Trim().ToLowerInvariant();
+
+            var usernameExists = await _context.Users
+                .AnyAsync(u => u.Username.ToLower() == normalizedUsername && !u.IsDeleted);
+
+            if (usernameExists)
+                return Conflict(new { error = "Username già in uso." });
 
             var user = new User
             {
@@ -73,10 +83,10 @@ namespace AuthService.Controllers
             }
 
             return Ok(new
-		{
-    		message = "Registrazione completata.",
-    		userId = user.Id
-		});
+            {
+                message = "Registrazione completata.",
+                userId = user.Id
+            });
         }
 
         [HttpPost("login")]
