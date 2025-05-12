@@ -20,7 +20,7 @@ namespace AuthService.Models
 
         public DateTime? LastLogin { get; set; }
 
-        public bool IsAdmin {get; set; } = false;
+        public bool IsAdmin { get; set; } = false;
         public bool IsDeleted { get; set; } = false;
     }
 }

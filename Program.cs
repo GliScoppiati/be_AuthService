@@ -6,7 +6,6 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using AuthService.Services;
 
-
 var builder = WebApplication.CreateBuilder(args);
 
 // ▶️ Configura DbContext con PostgreSQL
@@ -115,6 +114,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     var maxRetries = 10;
     var retries = 0;
@@ -124,9 +124,8 @@ using (var scope = app.Services.CreateScope())
         try
         {
             db.Database.Migrate();
-            Console.WriteLine("✅ Migration completata.");
+            logger.LogInformation("[AuthService] ✅ Migration completata.");
 
-            // 👉 CREAZIONE UTENTE ADMIN SE NON ESISTE
             var adminEmail = config["AdminUser:Email"];
             var adminUsername = config["AdminUser:Username"];
             var adminPassword = config["AdminUser:Password"];
@@ -150,16 +149,16 @@ using (var scope = app.Services.CreateScope())
                     });
 
                     db.SaveChanges();
-                    Console.WriteLine("👑 Utente admin creato.");
+                    logger.LogInformation("[AuthService] 👑 Utente admin creato.");
                 }
                 else
                 {
-                    Console.WriteLine("👤 Utente admin già esistente.");
+                    logger.LogInformation("[AuthService] 👤 Utente admin già esistente.");
                 }
             }
             else
             {
-                Console.WriteLine("⚠️ Parametri AdminUser incompleti. Utente admin non creato.");
+                logger.LogWarning("[AuthService] ⚠️ Parametri AdminUser incompleti. Utente admin non creato.");
             }
 
             break;
@@ -167,10 +166,13 @@ using (var scope = app.Services.CreateScope())
         catch (Exception ex)
         {
             retries++;
-            Console.WriteLine($"⏳ Tentativo {retries}/{maxRetries}: il DB non è ancora pronto... {ex.Message}");
+            logger.LogWarning(ex, "[AuthService] ⏳ Tentativo {Retry}/{MaxRetries}: il DB non è ancora pronto...", retries, maxRetries);
 
             if (retries >= maxRetries)
+            {
+                logger.LogCritical(ex, "[AuthService] ❌ Errore critico: raggiunto il numero massimo di tentativi ({MaxRetries})", maxRetries);
                 throw;
+            }
 
             Thread.Sleep(2000);
         }
@@ -190,5 +192,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-Console.WriteLine("✅ AuthService avviato su: " + builder.Configuration["ASPNETCORE_URLS"]);
+var loggerMain = app.Services.GetRequiredService<ILogger<Program>>();
+loggerMain.LogInformation("[AuthService] ✅ AuthService avviato su: {Url}", builder.Configuration["ASPNETCORE_URLS"]);
+
 app.Run();

@@ -98,7 +98,7 @@ namespace AuthService.Controllers
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
             if (user == null)
                 return Unauthorized("Credenziali non valide.");
-            
+
             if (user.IsDeleted)
                 return Unauthorized("Account disattivato.");
 
@@ -122,7 +122,7 @@ namespace AuthService.Controllers
 
             return Ok(new
             {
-            	userId = user.Id,
+                userId = user.Id,
                 token,
                 refreshToken = refreshToken.Token
             });
@@ -140,7 +140,7 @@ namespace AuthService.Controllers
 
             if (stored == null || stored.User == null)
                 return Unauthorized("Refresh token non valido o scaduto.");
-            
+
             if (stored.User.IsDeleted)
                 return Unauthorized("Account disattivato.");
 
@@ -184,12 +184,12 @@ namespace AuthService.Controllers
 
             return Ok(new { message = "Logout completato. Refresh token invalidato." });
         }
-	
+
         [HttpGet("exists/{id}")]
         public async Task<IActionResult> CheckUserExists(Guid id)
         {
-                var exists = await _context.Users.AnyAsync(u => u.Id == id);
-                return Ok(new { exists });
+            var exists = await _context.Users.AnyAsync(u => u.Id == id);
+            return Ok(new { exists });
         }
 
         [Authorize]
@@ -291,11 +291,11 @@ namespace AuthService.Controllers
             if (user.PasswordHash != currentHash)
                 return BadRequest(new { error = "La password attuale non è corretta." });
 
- 
+
             user.PasswordHash = HashPassword(request.NewPassword);
             _context.Users.Update(user);
 
-          
+
             var tokens = _context.RefreshTokens.Where(r => r.UserId == userId);
             _context.RefreshTokens.RemoveRange(tokens);
 
